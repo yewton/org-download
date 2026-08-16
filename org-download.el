@@ -509,7 +509,19 @@ It's inserted before the image link and is used to annotate it.")
          (filename
           (cond ((and (derived-mode-p 'org-mode)
                       (eq org-download-method 'attach))
-                 (let ((org-download-image-dir (org-attach-dir t))
+                 ;; Save to a temporary location first and let
+                 ;; org-attach-attach (below) move it into the
+                 ;; attachment directory, instead of writing directly
+                 ;; into the attachment directory and calling
+                 ;; org-attach-attach with method='none just for its
+                 ;; tagging/hook side effects. That old approach made
+                 ;; source and destination the same file, which chokes
+                 ;; on Org's org-attach-attach overwrite-confirmation
+                 ;; check (972d5c2ba, 2026-04-04): it always found the
+                 ;; "destination" already present, deleted it, and
+                 ;; then never recreated it since method='none matches
+                 ;; none of the cp/mv/ln/lns/url branches.
+                 (let ((org-download-image-dir temporary-file-directory)
                        org-download-heading-lvl)
                    (apply #'org-download--fullname link-and-ext)))
                 ((fboundp org-download-method)
@@ -520,7 +532,11 @@ It's inserted before the image link and is used to annotate it.")
     (org-download--image link filename)
     (when (org-download-org-mode-p)
       (when (eq org-download-method 'attach)
-        (org-attach-attach filename nil 'none))
+        (org-attach-attach filename nil 'mv)
+        (setq filename (expand-file-name
+                         (file-name-nondirectory filename)
+                         (org-attach-dir)))
+        (setq org-download-path-last-file filename))
       (org-download-insert-link link filename))
     (when (and (eq org-download-delete-image-after-download t)
                (not (url-handler-file-remote-p (current-kill 0))))
